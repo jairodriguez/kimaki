@@ -17,6 +17,7 @@ import {
   SILENT_MESSAGE_FLAGS,
 } from '../discord-utils.js'
 import { createLogger, LogPrefix } from '../logger.js'
+import errore from 'errore'
 
 const logger = createLogger(LogPrefix.COMPACT)
 
@@ -123,6 +124,26 @@ export async function handleCompactCommand({
 
     const { providerID, modelID } = lastUserMessage.info.model
 
+    // Pre-compaction memory flush - save memories before context reset
+    const memoryFlushPrompt = `Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries. If nothing to store, reply with <NO_REPLY token>.`
+
+    await command.editReply({
+      content: '💾 Saving memories before compaction...',
+    })
+
+    const flushResult = await errore.tryAsync(() => {
+      return client.session.promptAsync({
+        sessionID: sessionId,
+        directory: workingDirectory,
+        parts: [{ type: 'text', content: memoryFlushPrompt }],
+      })
+    })
+
+    if (flushResult instanceof Error) {
+      logger.error('[COMPACT] Memory flush failed:', flushResult)
+    }
+
+    // Now perform the compaction
     const result = await client.session.summarize({
       sessionID: sessionId,
       directory: workingDirectory,
@@ -142,6 +163,25 @@ export async function handleCompactCommand({
         content: `Failed to compact: ${errorMessage}`,
       })
       return
+    }
+
+    // Post-compaction audit - verify memory files were re-read
+    const auditPrompt = `Post-Compaction Audit: Check if the following required startup files were read after context reset:
+- WORKFLOW_AUTO.md
+- memory/YYYY-MM-DD.md
+
+If any were not read, read them now. Reply with <NO_REPLY token> if all files were read.`
+
+    const auditResult = await errore.tryAsync(() => {
+      return client.session.promptAsync({
+        sessionID: sessionId,
+        directory: workingDirectory,
+        parts: [{ type: 'text', content: auditPrompt }],
+      })
+    })
+
+    if (auditResult instanceof Error) {
+      logger.error('[COMPACT] Post-compaction audit failed:', auditResult)
     }
 
     await command.editReply({
