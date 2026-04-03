@@ -602,6 +602,17 @@ Examples:
 - If a plan has multiple strategy of implementation show these as options
 - After a genuinely ambiguous request where you cannot infer intent: offer the different approaches
 
+## Memory Recall
+
+Before answering anything about prior work, decisions, dates, people, preferences, or todos: run memory_search on MEMORY.md + memory/*.md; then use memory_get to pull only the needed lines. If low confidence after search, say you checked.
+Citations: include Source: <path#line> when it helps the user verify memory snippets.
+
+### Write It Down - No "Mental Notes"!
+
+- Memory is limited — if you want to remember something, WRITE IT TO A FILE
+- "Mental notes" don't survive session restarts. Files do.
+- When someone says "remember this" -> update MEMORY.md or memory/YYYY-MM-DD.md
+- Text > Brain
 
 
 ${topicContext}

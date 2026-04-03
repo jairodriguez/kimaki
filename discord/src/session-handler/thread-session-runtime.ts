@@ -1828,12 +1828,12 @@ export class ThreadSessionRuntime {
     if (!sessionId) {
       return
     }
-    const workingDir = this.state?.workingDirectory
+    const workingDir = this.sdkDirectory
     if (!workingDir) {
       return
     }
 
-    const getClient = this.getOpencodeClient
+    const getClient = getOpencodeClient
     if (!getClient) {
       return
     }
@@ -1871,12 +1871,12 @@ export class ThreadSessionRuntime {
     if (!sessionId) {
       return
     }
-    const workingDir = this.state?.workingDirectory
+    const workingDir = this.sdkDirectory
     if (!workingDir) {
       return
     }
 
-    const getClient = this.getOpencodeClient
+    const getClient = getOpencodeClient
     if (!getClient) {
       return
     }

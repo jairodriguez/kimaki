@@ -836,35 +836,35 @@ export async function startDiscordBot({
           sendError instanceof Error ? sendError.message : String(sendError),
         )
       }
+
+      // Learning: handle user messages in threads
+      const isThreadMessage = [
+        ChannelType.PublicThread,
+        ChannelType.PrivateThread,
+        ChannelType.AnnouncementThread,
+      ].includes(message.channel.type)
+
+      if (isThreadMessage && !message.author.bot && !isCliInjectedPrompt) {
+        const feedback = parseFeedbackMessage(message.content)
+        if (feedback) {
+          addFeedback(feedback.conversationId, feedback.isPositive)
+          await message.reply(`Feedback recorded! (${getStats().skills} skills)`)
+        } else {
+          pendingUserMessages.set(thread.id, { message: message.content, timestamp: Date.now() })
+        }
+      }
+
+      // Learning: log conversation when bot responds
+      if (isThreadMessage && isSelfBotMessage) {
+        const pending = pendingUserMessages.get(thread.id)
+        if (pending && Date.now() - pending.timestamp < 300000) {
+          const convId = logConversation(pending.message, message.content, thread.id)
+          pendingUserMessages.delete(thread.id)
+          await message.reply(`Logged #${convId}. Reply "good" or "bad" to rate.`)
+        }
+      }
     }
   })
-
-  // Learning: handle user messages in threads
-  const isThreadMessage = [
-    ChannelType.PublicThread,
-    ChannelType.PrivateThread,
-    ChannelType.AnnouncementThread,
-  ].includes(message.channel.type)
-
-  if (isThreadMessage && !message.author.bot && !isCliInjectedPrompt) {
-    const feedback = parseFeedbackMessage(message.content)
-    if (feedback) {
-      addFeedback(feedback.conversationId, feedback.isPositive)
-      await message.reply(`Feedback recorded! (${getStats().skills} skills)`)
-    } else {
-      pendingUserMessages.set(thread.id, { message: message.content, timestamp: Date.now() })
-    }
-  }
-
-  // Learning: log conversation when bot responds
-  if (isThreadMessage && isSelfBotMessage) {
-    const pending = pendingUserMessages.get(thread.id)
-    if (pending && Date.now() - pending.timestamp < 300000) {
-      const convId = logConversation(pending.message, message.content, thread.id)
-      pendingUserMessages.delete(thread.id)
-      await message.reply(`Logged #${convId}. Reply "good" or "bad" to rate.`)
-    }
-  }
 
   // Handle bot-initiated threads created by `kimaki send` (without --notify-only)
   // Uses JSON embed marker to pass options (start, worktree name)

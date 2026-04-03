@@ -3,9 +3,8 @@
 
 import fs from 'fs'
 import path from 'path'
-import os from 'node:os'
 
-const DATA_DIR = path.join(os.homedir(), '.kimaki')
+const DATA_DIR = path.join(process.env.HOME || '.', '.kimaki')
 const LEARNING_DB = path.join(DATA_DIR, 'learning.json')
 
 export interface Conversation {
@@ -91,7 +90,7 @@ export function addFeedback(conversationId: number, isPositive: boolean): void {
       existing.success_count++
     } else {
       data.skills.push({
-        id: data.nextId++,
+        id: data.skills.length + 1,
         name: `skill_${Date.now()}`,
         pattern,
         prompt_injection: `When user says similar to "${conv.user_message.substring(0, 40)}...", respond like: ${conv.bot_response.substring(0, 80)}`,

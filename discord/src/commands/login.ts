@@ -10,6 +10,9 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ModalSubmitInteraction,
+  ButtonBuilder,
+  ButtonStyle,
+  ButtonInteraction,
   ChannelType,
   type ThreadChannel,
   type TextChannel,
@@ -164,7 +167,13 @@ export async function handleLoginCommand({
 
     // Sort by hardcoded popularity order, then alphabetically for unlisted ones.
     // Discord select menus cap at 25, so we show the most popular providers.
-    const options = [...allProviders]
+    const pasteTokenOption = {
+      label: 'Paste OAuth Token',
+      value: 'paste_token',
+      description: 'Enter an OAuth token directly (e.g., YYaT0..., sk-ant-...)',
+    }
+
+    const providerOptions = [...allProviders]
       .sort((a, b) => {
         const rankA = PROVIDER_POPULARITY_ORDER.indexOf(a.id)
         const rankB = PROVIDER_POPULARITY_ORDER.indexOf(b.id)
@@ -175,7 +184,7 @@ export async function handleLoginCommand({
         }
         return a.name.localeCompare(b.name)
       })
-      .slice(0, 25)
+      .slice(0, 24)
       .map((provider) => {
         const isConnected = connected.includes(provider.id)
         return {
@@ -189,6 +198,8 @@ export async function handleLoginCommand({
             : 'Not connected',
         }
       })
+
+    const options = [pasteTokenOption, ...providerOptions]
 
     // Store context with a short hash key to avoid customId length limits
     const context = {
@@ -253,6 +264,17 @@ export async function handleLoginProviderSelectMenu(
       content: 'No provider selected',
       components: [],
     })
+    return
+  }
+
+  // Handle "Paste Token" option - show modal directly
+  if (selectedProviderId === 'paste_token') {
+    context.providerId = 'paste_token'
+    context.providerName = 'OAuth Token'
+    context.methodType = 'api'
+    context.methodLabel = 'Paste OAuth Token'
+    pendingLoginContexts.set(contextHash, context)
+    await showApiKeyModal(interaction, contextHash, 'OAuth Token')
     return
   }
 
@@ -324,26 +346,24 @@ export async function handleLoginProviderSelectMenu(
     // For OAuth or multiple methods, defer and continue
     await interaction.deferUpdate()
 
-    // If only one method and it's OAuth, start flow directly
-    if (methods.length === 1) {
-      const method = methods[0]!
-      context.methodIndex = 0
-      context.methodType = method.type
-      context.methodLabel = method.label
-      pendingLoginContexts.set(contextHash, context)
-      await startOAuthFlow(interaction, context, contextHash)
-      return
+    // Always show method selection menu with "Paste Token" option
+    const pasteTokenOption = {
+      label: 'Paste Token',
+      value: 'paste',
+      description: 'Enter an OAuth token or API key directly',
     }
 
-    // Multiple methods - show selection menu
-    const options = methods.slice(0, 25).map((method, index) => ({
-      label: method.label.slice(0, 100),
-      value: String(index),
-      description:
-        method.type === 'oauth'
-          ? 'OAuth authentication'
-          : 'Enter API key manually',
-    }))
+    const options = [
+      pasteTokenOption,
+      ...methods.map((method, index) => ({
+        label: method.label.slice(0, 100),
+        value: String(index),
+        description:
+          method.type === 'oauth'
+            ? 'OAuth authentication'
+            : 'Enter API key manually',
+      })),
+    ]
 
     const selectMenu = new StringSelectMenuBuilder()
       .setCustomId(`login_method:${contextHash}`)
@@ -394,7 +414,9 @@ export async function handleLoginMethodSelectMenu(
     return
   }
 
-  const selectedMethodIndex = parseInt(interaction.values[0] || '0', 10)
+  const selectedMethodValue = interaction.values[0]
+  const isPasteToken = selectedMethodValue === 'paste'
+  const selectedMethodIndex = isPasteToken ? 0 : parseInt(selectedMethodValue || '0', 10)
 
   try {
     const getClient = await initializeOpencodeForDirectory(context.dir)
@@ -404,6 +426,15 @@ export async function handleLoginMethodSelectMenu(
         content: getClient.message,
         components: [],
       })
+      return
+    }
+
+    // Handle "Paste Token" selection
+    if (isPasteToken) {
+      context.methodType = 'api'
+      context.methodLabel = 'Paste Token'
+      pendingLoginContexts.set(contextHash, context)
+      await showApiKeyModal(interaction, contextHash, context.providerName)
       return
     }
 
@@ -457,7 +488,7 @@ export async function handleLoginMethodSelectMenu(
 }
 
 /**
- * Show API key input modal.
+ * Show token input modal.
  */
 async function showApiKeyModal(
   interaction: StringSelectMenuInteraction,
@@ -466,12 +497,12 @@ async function showApiKeyModal(
 ): Promise<void> {
   const modal = new ModalBuilder()
     .setCustomId(`login_apikey:${contextHash}`)
-    .setTitle(`${providerName} API Key`.slice(0, 45))
+    .setTitle(`${providerName} Token`.slice(0, 45))
 
   const apiKeyInput = new TextInputBuilder()
     .setCustomId('apikey')
-    .setLabel('API Key')
-    .setPlaceholder('sk-...')
+    .setLabel('API Key or OAuth Token')
+    .setPlaceholder('sk-... or YYaT0...')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
 
@@ -558,9 +589,23 @@ async function startOAuthFlow(
       message += '_Waiting for authorization to complete..._'
     }
 
+    const components: ActionRowBuilder[] = []
+
+    // Add button to paste authorization code (show if method is 'code' or if instructions mention a code)
+    const hasCodeInstructions = instructions?.toLowerCase().includes('code')
+    if (method === 'code' || hasCodeInstructions) {
+      const button = new ButtonBuilder()
+        .setCustomId(`login_oauth_code:${contextHash}`)
+        .setLabel("I've got the code")
+        .setStyle(ButtonStyle.Primary)
+
+      const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(button)
+      components.push(actionRow)
+    }
+
     await interaction.editReply({
       content: message,
-      components: [],
+      components,
     })
 
     if (method === 'auto') {
@@ -596,13 +641,125 @@ async function startOAuthFlow(
 
     // Clean up context
     pendingLoginContexts.delete(contextHash)
-  } catch (error) {
-    loginLogger.error('OAuth flow error:', error)
-    await interaction.editReply({
-      content: `**Authentication Failed**\n${error instanceof Error ? error.message : 'Unknown error'}`,
+  }
+}
+
+/**
+ * Handle OAuth code button click - shows modal to paste the authorization code.
+ */
+export async function handleOAuthCodeButton(
+  interaction: ButtonInteraction,
+): Promise<void> {
+  const customId = interaction.customId
+
+  if (!customId.startsWith('login_oauth_code:')) {
+    return
+  }
+
+  const contextHash = customId.replace('login_oauth_code:', '')
+  const context = pendingLoginContexts.get(contextHash)
+
+  if (!context || !context.providerId || !context.providerName) {
+    await interaction.reply({
+      content: 'Session expired. Please run /login again.',
       components: [],
     })
+    return
   }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`login_oauth_callback:${contextHash}`)
+    .setTitle(`${context.providerName} Authorization Code`.slice(0, 45))
+
+  const codeInput = new TextInputBuilder()
+    .setCustomId('oauthcode')
+    .setLabel('Authorization Code')
+    .setPlaceholder('Paste the code from the authorization page')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+
+  const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(codeInput)
+  modal.addComponents(actionRow)
+
+  await interaction.showModal(modal)
+}
+
+/**
+ * Handle OAuth callback modal submission.
+ */
+export async function handleOAuthCallbackModalSubmit(
+  interaction: ModalSubmitInteraction,
+): Promise<void> {
+  const customId = interaction.customId
+
+  if (!customId.startsWith('login_oauth_callback:')) {
+    return
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  const contextHash = customId.replace('login_oauth_callback:', '')
+  const context = pendingLoginContexts.get(contextHash)
+
+  if (!context || !context.providerId || !context.providerName) {
+    await interaction.editReply({
+      content: 'Session expired. Please run /login again.',
+    })
+    return
+  }
+
+  const code = interaction.fields.getTextInputValue('oauthcode')
+
+  if (!code?.trim()) {
+    await interaction.editReply({
+      content: 'Authorization code is required.',
+    })
+    return
+  }
+
+  try {
+    const getClient = await initializeOpencodeForDirectory(context.dir)
+    if (getClient instanceof Error) {
+      await interaction.editReply({
+        content: getClient.message,
+      })
+      return
+    }
+
+    // Exchange the code for a token
+    const callbackResponse = await getClient().provider.oauth.callback({
+      providerID: context.providerId,
+      method: context.methodIndex,
+      directory: context.dir,
+      code: code.trim(),
+    })
+
+    if (callbackResponse.error) {
+      const errorData = callbackResponse.error as
+        | { data?: { message?: string } }
+        | undefined
+      await interaction.editReply({
+        content: `**Authentication Failed**\n${errorData?.data?.message || 'Authorization failed'}`,
+      })
+      return
+    }
+
+    // Dispose to refresh provider state so new credentials are recognized
+    await getClient().instance.dispose({ directory: context.dir })
+
+    await interaction.editReply({
+      content: `✅ **Successfully authenticated with ${context.providerName}!**\n\nYou can now use models from this provider.`,
+    })
+
+    // Clean up context
+    pendingLoginContexts.delete(contextHash)
+  } catch (error) {
+    loginLogger.error('OAuth callback error:', error)
+    await interaction.editReply({
+      content: `**Authentication Failed**\n${error instanceof Error ? error.message : 'Unknown error'}`,
+    })
+  }
+}
 }
 
 /**
@@ -638,6 +795,26 @@ export async function handleApiKeyModalSubmit(
     return
   }
 
+  // Detect provider from token format if using paste_token option
+  let providerId = context.providerId
+  if (providerId === 'paste_token') {
+    const token = apiKey.trim()
+    if (token.startsWith('YYaT') || token.startsWith('sk-ant-')) {
+      providerId = 'anthropic'
+    } else if (token.startsWith('sk-') || token.startsWith('sk-proj-')) {
+      providerId = 'openai'
+    } else {
+      await interaction.editReply({
+        content: 'Could not detect provider from token format. Please use /login and select the provider first.',
+      })
+      return
+    }
+    // Update context with detected provider
+    context.providerId = providerId
+    context.providerName = providerId === 'anthropic' ? 'Anthropic' : 'OpenAI'
+    pendingLoginContexts.set(contextHash, context)
+  }
+
   try {
     const getClient = await initializeOpencodeForDirectory(context.dir)
     if (getClient instanceof Error) {
@@ -649,7 +826,7 @@ export async function handleApiKeyModalSubmit(
 
     // Set the API key
     await getClient().auth.set({
-      providerID: context.providerId,
+      providerID: providerId,
       auth: {
         type: 'api',
         key: apiKey.trim(),
