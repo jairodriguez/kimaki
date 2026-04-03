@@ -641,6 +641,13 @@ async function startOAuthFlow(
 
     // Clean up context
     pendingLoginContexts.delete(contextHash)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred'
+    await interaction.editReply({
+      content: `**Authentication Error**\n${errorMessage}`,
+      components: [],
+    })
+    pendingLoginContexts.delete(contextHash)
   }
 }
 
@@ -759,7 +766,6 @@ export async function handleOAuthCallbackModalSubmit(
       content: `**Authentication Failed**\n${error instanceof Error ? error.message : 'Unknown error'}`,
     })
   }
-}
 }
 
 /**
