@@ -74,7 +74,7 @@ import { stopHranaServer } from './hrana-server.js'
 import { notifyError } from './sentry.js'
 import { flushDebouncedProcessCallbacks } from './debounced-process-flush.js'
 import { startRuntimeIdleSweeper } from './runtime-idle-sweeper.js'
-import { initLearning, logConversation, addFeedback, getLearnedContext, parseFeedbackMessage, getStats } from './learning.js'
+import { initLearning, logConversation, addFeedback, parseFeedbackMessage, getStats } from './learning.js'
 
 const pendingUserMessages = new Map<string, { message: string; timestamp: number }>()
 
@@ -837,7 +837,7 @@ export async function startDiscordBot({
         )
       }
 
-      // Learning: handle user messages in threads
+      // Learning: handle user messages in threads (inside try block)
       const isThreadMessage = [
         ChannelType.PublicThread,
         ChannelType.PrivateThread,

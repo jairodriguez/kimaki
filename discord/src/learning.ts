@@ -45,7 +45,9 @@ function loadData(): LearningData {
 
 function saveData(data: LearningData): void {
   fs.mkdirSync(DATA_DIR, { recursive: true })
-  fs.writeFileSync(LEARNING_DB, JSON.stringify(data, null, 2))
+  const tempFile = LEARNING_DB + '.tmp'
+  fs.writeFileSync(tempFile, JSON.stringify(data, null, 2))
+  fs.renameSync(tempFile, LEARNING_DB)
 }
 
 export function initLearning(): void {
@@ -125,8 +127,8 @@ export function getStats(): { conversations: number; skills: number } {
 }
 
 export function parseFeedbackMessage(content: string): { conversationId: number; isPositive: boolean } | null {
-  const good = /good|👍|✅|yes|yep|great|awesome/i.test(content)
-  const bad = /bad|👎|❌|no|nope|sorry|wrong/i.test(content)
+  const good = /\b(good|yes|yep|great|awesome)\b|👍|✅/i.test(content)
+  const bad = /\b(bad|no|nope|sorry|wrong)\b|👎|❌/i.test(content)
   const idMatch = content.match(/#(\d+)/i)
 
   if (!idMatch) return null

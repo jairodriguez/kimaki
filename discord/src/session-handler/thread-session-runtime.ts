@@ -490,6 +490,17 @@ export class ThreadSessionRuntime {
   private hasFlushedForCurrentCycle = false
   private lastCompactionCycle = 0 // Track compaction cycles to reset flush flag
 
+  // Shared prompt constants for memory flush and post-compaction audit
+  private static readonly MEMORY_FLUSH_PROMPT = `Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries. If nothing to store, reply with <NO_REPLY token>.`
+
+  private static readonly POST_COMPACTION_AUDIT_PROMPT = `Post-Compaction Audit: Check if the following required startup files were read after context reset:
+- AGENTS.md
+- CLAUDE.md
+- WORKFLOW_AUTO.md
+- memory/YYYY-MM-DD.md
+
+If any were not read, read them now. Reply with <NO_REPLY token> if all files were read.`
+
   // Part output buffering (write-side cache, not domain state)
   private partBuffer = new Map<string, Map<string, Part>>()
 
@@ -1838,13 +1849,11 @@ export class ThreadSessionRuntime {
       return
     }
 
-    const memoryFlushPrompt = `Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries. If nothing to store, reply with <NO_REPLY token>.`
-
     const promptResult = await errore.tryAsync(() => {
       return getClient().session.promptAsync({
         sessionID: sessionId,
         directory: workingDir,
-        parts: [{ type: 'text', content: memoryFlushPrompt }],
+        parts: [{ type: 'text', content: ThreadSessionRuntime.MEMORY_FLUSH_PROMPT }],
       })
     })
 
@@ -1881,17 +1890,11 @@ export class ThreadSessionRuntime {
       return
     }
 
-    const auditPrompt = `Post-Compaction Audit: Check if the following required startup files were read after context reset:
-- WORKFLOW_AUTO.md
-- memory/YYYY-MM-DD.md
-
-If any were not read, read them now. Reply with <NO_REPLY token> if all files were read.`
-
     const auditResult = await errore.tryAsync(() => {
       return getClient().session.promptAsync({
         sessionID: sessionId,
         directory: workingDir,
-        parts: [{ type: 'text', content: auditPrompt }],
+        parts: [{ type: 'text', content: ThreadSessionRuntime.POST_COMPACTION_AUDIT_PROMPT }],
       })
     })
 
@@ -1899,6 +1902,8 @@ If any were not read, read them now. Reply with <NO_REPLY token> if all files we
       discordLogger.error('Post-compaction audit failed:', auditResult)
     } else {
       discordLogger.log('Post-compaction audit completed')
+      // Reset flush flag after compaction completes so it can trigger again for next cycle
+      this.hasFlushedForCurrentCycle = false
     }
   }
 
