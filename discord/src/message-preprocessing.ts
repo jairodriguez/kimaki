@@ -18,6 +18,7 @@ import {
 import { processVoiceAttachment } from './voice-handler.js'
 import { initializeOpencodeForDirectory } from './opencode.js'
 import { getCompactSessionContext, getLastSessionId } from './markdown.js'
+import { getLearnedContext } from './learning.js'
 import { getThreadSession } from './database.js'
 import * as errore from 'errore'
 import { createLogger, LogPrefix } from './logger.js'
@@ -163,8 +164,9 @@ export async function preprocessExistingThreadMessage({
     : messageContent
 
   const qs = extractQueueSuffix(promptWithAttachments)
+  const learned = getLearnedContext()
   return {
-    prompt: qs.prompt,
+    prompt: learned ? `${learned}\n\n${qs.prompt}` : qs.prompt,
     images: fileAttachments.length > 0 ? fileAttachments : undefined,
     mode: qs.forceQueue || voiceResult?.queueMessage ? 'local-queue' : 'opencode',
   }
@@ -228,8 +230,9 @@ export async function preprocessNewSessionMessage({
   }
 
   const qs = extractQueueSuffix(prompt)
+  const learned = getLearnedContext()
   return {
-    prompt: qs.prompt,
+    prompt: learned ? `${learned}\n\n${qs.prompt}` : qs.prompt,
     mode: qs.forceQueue || voiceResult?.queueMessage ? 'local-queue' : 'opencode',
   }
 }
@@ -275,8 +278,9 @@ export async function preprocessNewThreadMessage({
     : messageContent
 
   const qs = extractQueueSuffix(promptWithAttachments)
+  const learned = getLearnedContext()
   return {
-    prompt: qs.prompt,
+    prompt: learned ? `${learned}\n\n${qs.prompt}` : qs.prompt,
     images: fileAttachments.length > 0 ? fileAttachments : undefined,
     mode: qs.forceQueue || voiceResult?.queueMessage ? 'local-queue' : 'opencode',
   }

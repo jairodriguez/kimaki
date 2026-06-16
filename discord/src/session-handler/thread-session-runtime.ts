@@ -485,6 +485,22 @@ export class ThreadSessionRuntime {
   private lastDisplayedContextPercentage = 0
   private lastRateLimitDisplayTime = 0
 
+  // Pre-compaction memory flush state
+  private preCompactThreshold = 80 // Trigger flush at 80% context usage
+  private hasFlushedForCurrentCycle = false
+  private lastCompactionCycle = 0 // Track compaction cycles to reset flush flag
+
+  // Shared prompt constants for memory flush and post-compaction audit
+  private static readonly MEMORY_FLUSH_PROMPT = `Pre-compaction memory flush. Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries. If nothing to store, reply with <NO_REPLY token>.`
+
+  private static readonly POST_COMPACTION_AUDIT_PROMPT = `Post-Compaction Audit: Check if the following required startup files were read after context reset:
+- AGENTS.md
+- CLAUDE.md
+- WORKFLOW_AUTO.md
+- memory/YYYY-MM-DD.md
+
+If any were not read, read them now. Reply with <NO_REPLY token> if all files were read.`
+
   // Part output buffering (write-side cache, not domain state)
   private partBuffer = new Map<string, Map<string, Part>>()
 
@@ -1805,6 +1821,89 @@ export class ThreadSessionRuntime {
     })
     if (sendResult instanceof Error) {
       discordLogger.error('Failed to send context usage notice:', sendResult)
+    }
+
+    // Auto-trigger memory flush when crossing preCompactThreshold
+    if (
+      currentPercentage >= this.preCompactThreshold &&
+      !this.hasFlushedForCurrentCycle
+    ) {
+      await this.triggerMemoryFlush()
+      this.hasFlushedForCurrentCycle = true
+    }
+  }
+
+  // Trigger memory flush before context compaction
+  private async triggerMemoryFlush(): Promise<void> {
+    const sessionId = this.state?.sessionId
+    if (!sessionId) {
+      return
+    }
+    const workingDir = this.sdkDirectory
+    if (!workingDir) {
+      return
+    }
+
+    const getClient = getOpencodeClient
+    if (!getClient) {
+      return
+    }
+
+    const promptResult = await errore.tryAsync(() => {
+      return getClient().session.promptAsync({
+        sessionID: sessionId,
+        directory: workingDir,
+        parts: [{ type: 'text', content: ThreadSessionRuntime.MEMORY_FLUSH_PROMPT }],
+      })
+    })
+
+    if (promptResult instanceof Error) {
+      discordLogger.error('Memory flush failed:', promptResult)
+    } else {
+      discordLogger.log('Memory flushed at pre-compaction threshold')
+      // Send brief message to Discord
+      const msgResult = await errore.tryAsync(() => {
+        return this.thread.send({
+          content: '💾 Saving memories...',
+          flags: SILENT_MESSAGE_FLAGS,
+        })
+      })
+      if (msgResult instanceof Error) {
+        discordLogger.error('Failed to send memory save notice:', msgResult)
+      }
+    }
+  }
+
+  // Post-compaction audit - verify memory files were re-read
+  public async runPostCompactionAudit(): Promise<void> {
+    const sessionId = this.state?.sessionId
+    if (!sessionId) {
+      return
+    }
+    const workingDir = this.sdkDirectory
+    if (!workingDir) {
+      return
+    }
+
+    const getClient = getOpencodeClient
+    if (!getClient) {
+      return
+    }
+
+    const auditResult = await errore.tryAsync(() => {
+      return getClient().session.promptAsync({
+        sessionID: sessionId,
+        directory: workingDir,
+        parts: [{ type: 'text', content: ThreadSessionRuntime.POST_COMPACTION_AUDIT_PROMPT }],
+      })
+    })
+
+    if (auditResult instanceof Error) {
+      discordLogger.error('Post-compaction audit failed:', auditResult)
+    } else {
+      discordLogger.log('Post-compaction audit completed')
+      // Reset flush flag after compaction completes so it can trigger again for next cycle
+      this.hasFlushedForCurrentCycle = false
     }
   }
 

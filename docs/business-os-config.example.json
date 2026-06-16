@@ -1,0 +1,73 @@
+{
+  "preset": "business-os",
+  "business": {
+    "name": "Harmony Business OS",
+    "slug": "harmony-business-os"
+  },
+  "install": {
+    "dataDir": "/Users/harmony/.kimaki",
+    "workspaceRoot": "/Users/harmony/business-os"
+  },
+  "global": {
+    "identityName": "Kimaki",
+    "userName": "Harmony",
+    "persona": "Calm, proactive chief-of-staff operating system for a founder-led business"
+  },
+  "rootAgent": {
+    "id": "chief-of-staff",
+    "name": "Chief of Staff",
+    "workspace": "/Users/harmony/business-os",
+    "model": "opencodezen/big-pickle"
+  },
+  "agents": [
+    {
+      "id": "sales",
+      "name": "Sales",
+      "role": "sales-agent",
+      "workspace": "/Users/harmony/business-os/agents/sales",
+      "model": "opencodezen/big-pickle",
+      "heartbeat": "0 */4 * * *"
+    },
+    {
+      "id": "ops",
+      "name": "Ops",
+      "role": "ops-agent",
+      "workspace": "/Users/harmony/business-os/agents/ops",
+      "model": "opencodezen/big-pickle",
+      "heartbeat": "15 */4 * * *"
+    },
+    {
+      "id": "finance",
+      "name": "Finance",
+      "role": "finance-agent",
+      "workspace": "/Users/harmony/business-os/agents/finance",
+      "model": "opencodezen/big-pickle",
+      "heartbeat": "30 */4 * * *"
+    },
+    {
+      "id": "research",
+      "name": "Research",
+      "role": "research-agent",
+      "workspace": "/Users/harmony/business-os/agents/research",
+      "model": "opencodezen/big-pickle",
+      "heartbeat": "45 */4 * * *"
+    }
+  ],
+  "globalIntelligence": {
+    "enabled": true,
+    "participants": [
+      "chief-of-staff",
+      "sales",
+      "ops",
+      "finance",
+      "research"
+    ]
+  },
+  "channels": {
+    "chief-of-staff": "DISCORD_CHANNEL_ID_ROOT",
+    "sales": "DISCORD_CHANNEL_ID_SALES",
+    "ops": "DISCORD_CHANNEL_ID_OPS",
+    "finance": "DISCORD_CHANNEL_ID_FINANCE",
+    "research": "DISCORD_CHANNEL_ID_RESEARCH"
+  }
+}

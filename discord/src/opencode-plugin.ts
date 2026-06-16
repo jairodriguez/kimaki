@@ -49,6 +49,11 @@ const logger = createLogger(LogPrefix.OPENCODE)
 // this file because OpenCode's plugin loader calls every exported function
 // as a plugin initializer, which would crash marked's Lexer with non-string input.
 import { condenseMemoryMd } from './condense-memory.js'
+import {
+  searchMemory,
+  readMemoryFile,
+  syncMemoryIndex,
+} from './memory.js'
 
 const FILE_UPLOAD_TIMEOUT_MS = 6 * 60 * 1000
 const DEFAULT_FILE_UPLOAD_MAX_FILES = 5
@@ -302,6 +307,81 @@ const kimakiPlugin: Plugin = async ({ directory }) => {
           }
 
           return 'Action button request timed out'
+        },
+      }),
+      memory_search: tool({
+        description: dedent`
+          Mandatory recall step: semantically search MEMORY.md + memory/*.md
+          (and optional session transcripts) before answering questions about
+          prior work, decisions, dates, people, preferences, or todos; returns
+          top snippets with path + lines. If response has disabled=true, memory
+          retrieval is unavailable and should be surfaced to the user.
+        `,
+        args: {
+          query: z.string().describe('The search query'),
+          maxResults: z
+            .number()
+            .optional()
+            .describe('Maximum number of results (default 6)'),
+          minScore: z
+            .number()
+            .optional()
+            .describe('Minimum score threshold (default 0.35)'),
+        },
+        async execute({ query, maxResults, minScore }, context) {
+          try {
+            await syncMemoryIndex(context.directory)
+            const results = await searchMemory(context.directory, query, {
+              maxResults: maxResults || 6,
+              minScore: minScore || 0.35,
+            })
+
+            if (results.length === 0) {
+              return JSON.stringify({ results: [] })
+            }
+
+            return JSON.stringify({
+              results: results.map((r) => ({
+                path: r.path,
+                startLine: r.startLine,
+                endLine: r.endLine,
+                score: r.score,
+                snippet: r.snippet,
+              })),
+            })
+          } catch (error) {
+            return JSON.stringify({
+              results: [],
+              disabled: true,
+              error: error instanceof Error ? error.message : 'Memory search failed',
+            })
+          }
+        },
+      }),
+      memory_get: tool({
+        description: dedent`
+          Safe snippet read from MEMORY.md or memory/*.md with optional
+          from/lines; use after memory_search to pull only the needed lines and
+          keep context small.
+        `,
+        args: {
+          path: z.string().describe('Path to the memory file (e.g., MEMORY.md, memory/2026-03-17.md)'),
+          from: z
+            .number()
+            .optional()
+            .describe('Starting line number (1-indexed)'),
+          lines: z.number().optional().describe('Number of lines to read'),
+        },
+        async execute({ path, from, lines }, context) {
+          try {
+            const result = await readMemoryFile(context.directory, path, from, lines)
+            return JSON.stringify(result)
+          } catch (error) {
+            return JSON.stringify({
+              text: '',
+              error: error instanceof Error ? error.message : 'Failed to read memory file',
+            })
+          }
         },
       }),
     },

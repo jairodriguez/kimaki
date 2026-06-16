@@ -609,8 +609,9 @@ export async function createWorktreeWithSubmodules({
   const worktreeDir = getManagedWorktreeDirectory({ directory, name })
   const targetRef = baseBranch || (await resolveDefaultWorktreeTarget(directory))
 
+  // Clean up existing worktree directory if it exists (allows re-running sessions)
   if (fs.existsSync(worktreeDir)) {
-    return new Error(`Worktree directory already exists: ${worktreeDir}`)
+    await fs.promises.rm(worktreeDir, { recursive: true, force: true })
   }
 
   await fs.promises.mkdir(path.dirname(worktreeDir), { recursive: true })

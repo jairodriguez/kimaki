@@ -54,6 +54,8 @@ import {
   handleLoginProviderSelectMenu,
   handleLoginMethodSelectMenu,
   handleApiKeyModalSubmit,
+  handleOAuthCodeButton,
+  handleOAuthCallbackModalSubmit,
 } from './commands/login.js'
 import {
   handleTranscriptionApiKeyButton,
@@ -482,6 +484,16 @@ export function registerInteractionHandler({
           }
 
           const customId = interaction.customId
+
+          if (customId.startsWith('login_oauth_code:')) {
+            await handleOAuthCodeButton(interaction)
+            return
+          }
+
+          if (customId.startsWith('login_oauth_callback:')) {
+            await handleOAuthCallbackModalSubmit(interaction)
+            return
+          }
 
           if (customId.startsWith('login_apikey:')) {
             await handleApiKeyModalSubmit(interaction)
